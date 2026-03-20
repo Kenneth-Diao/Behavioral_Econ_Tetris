@@ -27,9 +27,7 @@
     overflow: hidden;
   }
 
-  .board-wrapper {
-    position: relative;
-  }
+  .board-wrapper { position: relative; }
 
   #game-canvas {
     display: block;
@@ -99,10 +97,7 @@
     transition: background 0.15s, color 0.15s;
   }
 
-  .btn:hover {
-    background: var(--accent);
-    color: #0a0a0f;
-  }
+  .btn:hover { background: var(--accent); color: #0a0a0f; }
 </style>
 </head>
 <body>
@@ -139,35 +134,34 @@ const LINES_PER_LEVEL = 3;
 const MAX_LEVEL = 10;
 const LOCK_MS = 200;
 const FLASH_MS = 200;
-const SPEEDS = [500, 380, 280, 200, 140, 100, 70, 50, 35, 25]; // ms per drop
+const SPEEDS = [500, 380, 280, 200, 140, 100, 70, 50, 35, 25];
 
 const PIECE_DEFS = [
-  { shape: [[1,1,1,1]],         color: '#00f5ff' }, // I
-  { shape: [[1,1],[1,1]],       color: '#ffbe0b' }, // O
-  { shape: [[0,1,0],[1,1,1]],   color: '#bf5af2' }, // T
-  { shape: [[0,1,1],[1,1,0]],   color: '#30d158' }, // S
-  { shape: [[1,1,0],[0,1,1]],   color: '#ff453a' }, // Z
-  { shape: [[1,0,0],[1,1,1]],   color: '#0a84ff' }, // J
-  { shape: [[0,0,1],[1,1,1]],   color: '#ff9f0a' }, // L
+  { shape: [[1,1,1,1]],         color: '#00f5ff' },
+  { shape: [[1,1],[1,1]],       color: '#ffbe0b' },
+  { shape: [[0,1,0],[1,1,1]],   color: '#bf5af2' },
+  { shape: [[0,1,1],[1,1,0]],   color: '#30d158' },
+  { shape: [[1,1,0],[0,1,1]],   color: '#ff453a' },
+  { shape: [[1,0,0],[1,1,1]],   color: '#0a84ff' },
+  { shape: [[0,0,1],[1,1,1]],   color: '#ff9f0a' },
 ];
 
-// ── Canvas ────────────────────────────────────────────────────────────────
+// ── Canvas ─────────────────────────────────────────────────────────────────
 const canvas = document.getElementById('game-canvas');
 const ctx = canvas.getContext('2d');
 
-// ── Overlays ──────────────────────────────────────────────────────────────
 const OVR_START    = document.getElementById('overlay-start');
 const OVR_PAUSE    = document.getElementById('overlay-pause');
 const OVR_GAMEOVER = document.getElementById('overlay-gameover');
 
-// ── Game state ────────────────────────────────────────────────────────────
+// ── State ──────────────────────────────────────────────────────────────────
 let board, piece, nextPiece;
 let score, level, lines;
 let running, paused;
 let rafId, lastTs, dropAcc, lockAcc;
 let flashRows, flashAcc;
 
-// ── Helpers ───────────────────────────────────────────────────────────────
+// ── Helpers ────────────────────────────────────────────────────────────────
 function newBoard() {
   return Array.from({ length: ROWS }, () => Array(COLS).fill(null));
 }
@@ -231,7 +225,7 @@ function dropGhost() {
   return piece.y + dy;
 }
 
-// ── Render ────────────────────────────────────────────────────────────────
+// ── Render ─────────────────────────────────────────────────────────────────
 function drawCell(x, y, color, alpha) {
   const px = x * CELL, py = y * CELL;
   ctx.save();
@@ -284,14 +278,12 @@ function render() {
   }
 }
 
-// ── Game flow ─────────────────────────────────────────────────────────────
+// ── Game flow ──────────────────────────────────────────────────────────────
 function spawn() {
   piece = nextPiece;
   nextPiece = newPiece();
   lockAcc = 0;
-  if (hits(piece, 0, 0)) {
-    endGame();
-  }
+  if (hits(piece, 0, 0)) endGame();
 }
 
 function place() {
@@ -311,6 +303,8 @@ function endGame() {
   cancelAnimationFrame(rafId);
   render();
   OVR_GAMEOVER.classList.remove('hidden');
+  // Report results to parent page (e.g. Qualtrics)
+  window.parent.postMessage({ score, level, lines }, '*');
 }
 
 function loop(ts) {
@@ -318,7 +312,6 @@ function loop(ts) {
   const dt = Math.min(ts - lastTs, 100);
   lastTs = ts;
 
-  // Line-clear flash
   if (flashRows.length) {
     flashAcc += dt;
     render();
@@ -360,18 +353,18 @@ function loop(ts) {
 }
 
 function startGame() {
-  board      = newBoard();
-  score      = 0;
-  level      = 1;
-  lines      = 0;
-  running    = false;
-  paused     = false;
-  dropAcc    = 0;
-  lockAcc    = 0;
-  flashRows  = [];
-  flashAcc   = 0;
-  nextPiece  = newPiece();
-  piece      = newPiece();
+  board     = newBoard();
+  score     = 0;
+  level     = 1;
+  lines     = 0;
+  running   = false;
+  paused    = false;
+  dropAcc   = 0;
+  lockAcc   = 0;
+  flashRows = [];
+  flashAcc  = 0;
+  nextPiece = newPiece();
+  piece     = newPiece();
 
   OVR_START.classList.add('hidden');
   OVR_PAUSE.classList.add('hidden');
