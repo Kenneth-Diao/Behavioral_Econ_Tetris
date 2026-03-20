@@ -1,0 +1,520 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>TETRIS — Debug</title>
+<style>
+  @import url('https://fonts.googleapis.com/css2?family=Share+Tech+Mono&family=Orbitron:wght@400;700;900&display=swap');
+
+  :root {
+    --bg: #0a0a0f;
+    --border: #1e1e3a;
+    --accent: #00f5ff;
+    --accent2: #ff006e;
+    --dim: #4a4a7a;
+  }
+
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+
+  body {
+    background: var(--bg);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    min-height: 100vh;
+    font-family: 'Share Tech Mono', monospace;
+    overflow: hidden;
+  }
+
+  .board-wrapper {
+    position: relative;
+  }
+
+  #game-canvas {
+    display: block;
+    border: 1px solid var(--border);
+    border-radius: 2px;
+    box-shadow: 0 0 0 1px rgba(0,245,255,0.08), 0 0 30px rgba(0,245,255,0.06);
+  }
+
+  .scanlines {
+    position: absolute;
+    inset: 0;
+    background: repeating-linear-gradient(
+      0deg, transparent, transparent 2px,
+      rgba(0,0,0,0.08) 2px, rgba(0,0,0,0.08) 4px
+    );
+    pointer-events: none;
+    border-radius: 2px;
+  }
+
+  .overlay {
+    position: absolute;
+    inset: 0;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    background: rgba(10,10,15,0.92);
+    border-radius: 2px;
+    gap: 16px;
+  }
+
+  .overlay.hidden { display: none; }
+
+  .overlay-title {
+    font-family: 'Orbitron', sans-serif;
+    font-size: 28px;
+    font-weight: 900;
+    letter-spacing: 4px;
+    color: var(--accent);
+    text-shadow: 0 0 20px rgba(0,245,255,0.8);
+    text-align: center;
+  }
+
+  .overlay-title.game-over {
+    color: var(--accent2);
+    text-shadow: 0 0 20px rgba(255,0,110,0.8);
+  }
+
+  .overlay-sub {
+    font-size: 11px;
+    letter-spacing: 1px;
+    color: var(--dim);
+    text-align: center;
+    line-height: 2;
+  }
+
+  .btn {
+    background: transparent;
+    border: 1px solid var(--accent);
+    color: var(--accent);
+    font-family: 'Orbitron', sans-serif;
+    font-size: 11px;
+    letter-spacing: 2px;
+    padding: 10px 24px;
+    cursor: pointer;
+    text-transform: uppercase;
+    transition: background 0.15s, color 0.15s;
+  }
+
+  .debug-panel {
+    width: 160px;
+    background: #0f0f1a;
+    border: 1px solid #1e1e3a;
+    border-radius: 4px;
+    padding: 14px;
+    font-size: 11px;
+    color: #a0a0c0;
+    align-self: flex-start;
+  }
+
+  .debug-panel h3 {
+    font-family: 'Orbitron', sans-serif;
+    font-size: 9px;
+    letter-spacing: 2px;
+    color: #ffbe0b;
+    text-shadow: 0 0 8px rgba(255,190,11,0.5);
+    margin-bottom: 10px;
+    text-transform: uppercase;
+  }
+
+  .debug-row {
+    display: flex;
+    justify-content: space-between;
+    margin-bottom: 6px;
+    border-bottom: 1px solid #1a1a2e;
+    padding-bottom: 6px;
+  }
+
+  .debug-row:last-of-type { border-bottom: none; }
+
+  .debug-key { color: #4a4a7a; }
+  .debug-val { color: #00f5ff; font-weight: bold; text-shadow: 0 0 6px rgba(0,245,255,0.4); }
+  .debug-val.warn { color: #ff9f0a; text-shadow: 0 0 6px rgba(255,159,10,0.4); }
+
+  .debug-divider {
+    border: none;
+    border-top: 1px solid #1e1e3a;
+    margin: 10px 0;
+  }
+
+  body { display: flex; gap: 16px; align-items: flex-start; padding: 20px; }</style>
+</head>
+<body>
+
+<div class="board-wrapper">
+  <canvas id="game-canvas" width="200" height="400"></canvas>
+  <div class="scanlines"></div>
+
+  <div class="overlay" id="overlay-start">
+    <div class="overlay-title">TETRIS</div>
+    <div class="overlay-sub">
+      ← → move &nbsp;·&nbsp; ↑ rotate<br>
+      ↓ soft drop &nbsp;·&nbsp; SPACE hard drop<br>
+      P pause
+    </div>
+    <button class="btn" id="btn-start">START GAME</button>
+  </div>
+
+  <div class="overlay hidden" id="overlay-pause">
+    <div class="overlay-title">PAUSED</div>
+    <button class="btn" id="btn-resume">RESUME</button>
+  </div>
+
+  <div class="overlay hidden" id="overlay-gameover">
+    <div class="overlay-title game-over">GAME OVER</div>
+    <div class="overlay-sub">Thanks for playing!</div>
+    <button class="btn" id="btn-replay">PLAY AGAIN</button>
+  </div>
+</div>
+
+<!-- Debug panel -->
+<div class="debug-panel">
+  <h3>⚙ Debug</h3>
+  <div class="debug-row"><span class="debug-key">Score</span><span class="debug-val" id="d-score">0</span></div>
+  <div class="debug-row"><span class="debug-key">Level</span><span class="debug-val" id="d-level">1</span></div>
+  <div class="debug-row"><span class="debug-key">Lines</span><span class="debug-val" id="d-lines">0</span></div>
+  <div class="debug-row"><span class="debug-key">Pieces</span><span class="debug-val" id="d-pieces">0</span></div>
+  <hr class="debug-divider">
+  <div class="debug-row"><span class="debug-key">Hi Score</span><span class="debug-val" id="d-hiscore">0</span></div>
+  <div class="debug-row"><span class="debug-key">Hi Level</span><span class="debug-val" id="d-hilevel">1</span></div>
+  <div class="debug-row"><span class="debug-key">Hi Lines</span><span class="debug-val" id="d-hilines">0</span></div>
+  <hr class="debug-divider">
+  <div class="debug-row"><span class="debug-key">Speed</span><span class="debug-val" id="d-speed">500ms</span></div>
+  <div class="debug-row"><span class="debug-key">State</span><span class="debug-val warn" id="d-state">IDLE</span></div>
+  <div class="debug-row"><span class="debug-key">Plays</span><span class="debug-val" id="d-plays">0</span></div>
+</div>
+
+<script>
+// ── Constants ──────────────────────────────────────────────────────────────
+const COLS = 10, ROWS = 20, CELL = 20;
+const LINES_PER_LEVEL = 3;
+const MAX_LEVEL = 10;
+const LOCK_MS = 200;
+const FLASH_MS = 200;
+const SPEEDS = [500, 380, 280, 200, 140, 100, 70, 50, 35, 25]; // ms per drop
+
+const PIECE_DEFS = [
+  { shape: [[1,1,1,1]],         color: '#00f5ff' }, // I
+  { shape: [[1,1],[1,1]],       color: '#ffbe0b' }, // O
+  { shape: [[0,1,0],[1,1,1]],   color: '#bf5af2' }, // T
+  { shape: [[0,1,1],[1,1,0]],   color: '#30d158' }, // S
+  { shape: [[1,1,0],[0,1,1]],   color: '#ff453a' }, // Z
+  { shape: [[1,0,0],[1,1,1]],   color: '#0a84ff' }, // J
+  { shape: [[0,0,1],[1,1,1]],   color: '#ff9f0a' }, // L
+];
+
+// ── Canvas ────────────────────────────────────────────────────────────────
+const canvas = document.getElementById('game-canvas');
+const ctx = canvas.getContext('2d');
+
+// ── Overlays ──────────────────────────────────────────────────────────────
+const OVR_START    = document.getElementById('overlay-start');
+const OVR_PAUSE    = document.getElementById('overlay-pause');
+const OVR_GAMEOVER = document.getElementById('overlay-gameover');
+
+// ── Game state ────────────────────────────────────────────────────────────
+let board, piece, nextPiece;
+let score, level, lines;
+let running, paused;
+let rafId, lastTs, dropAcc, lockAcc;
+let flashRows, flashAcc;
+
+// ── Debug state ───────────────────────────────────────────────────────────
+let pieceCount = 0;
+let playCount  = 0;
+let hiScore    = 0;
+let hiLevel    = 1;
+let hiLines    = 0;
+
+// ── Helpers ───────────────────────────────────────────────────────────────
+function newBoard() {
+  return Array.from({ length: ROWS }, () => Array(COLS).fill(null));
+}
+
+function newPiece() {
+  const def = PIECE_DEFS[Math.floor(Math.random() * PIECE_DEFS.length)];
+  return {
+    shape: def.shape.map(r => [...r]),
+    color: def.color,
+    x: Math.floor((COLS - def.shape[0].length) / 2),
+    y: 0
+  };
+}
+
+function rotated(shape) {
+  const R = shape.length, C = shape[0].length;
+  return Array.from({ length: C }, (_, c) =>
+    Array.from({ length: R }, (_, r) => shape[R - 1 - r][c])
+  );
+}
+
+function hits(p, dx, dy, sh) {
+  sh = sh || p.shape;
+  dx = dx || 0;
+  dy = dy || 0;
+  for (let r = 0; r < sh.length; r++) {
+    for (let c = 0; c < sh[r].length; c++) {
+      if (!sh[r][c]) continue;
+      const nx = p.x + c + dx;
+      const ny = p.y + r + dy;
+      if (nx < 0 || nx >= COLS || ny >= ROWS) return true;
+      if (ny >= 0 && board[ny][nx]) return true;
+    }
+  }
+  return false;
+}
+
+function stamp() {
+  piece.shape.forEach((row, r) => {
+    row.forEach((v, c) => {
+      if (v && piece.y + r >= 0) board[piece.y + r][piece.x + c] = piece.color;
+    });
+  });
+}
+
+function fullRows() {
+  let rows = [];
+  for (let r = ROWS - 1; r >= 0; r--)
+    if (board[r].every(v => v !== null)) rows.push(r);
+  return rows;
+}
+
+function clearRows(rows) {
+  rows.sort((a, b) => b - a);
+  rows.forEach(r => { board.splice(r, 1); board.unshift(Array(COLS).fill(null)); });
+}
+
+function dropGhost() {
+  let dy = 0;
+  while (!hits(piece, 0, dy + 1)) dy++;
+  return piece.y + dy;
+}
+
+// ── Debug HUD ─────────────────────────────────────────────────────────────
+function updateDebug(state) {
+  document.getElementById('d-score').textContent  = score || 0;
+  document.getElementById('d-level').textContent  = level || 1;
+  document.getElementById('d-lines').textContent  = lines || 0;
+  document.getElementById('d-pieces').textContent = pieceCount;
+  document.getElementById('d-hiscore').textContent = hiScore;
+  document.getElementById('d-hilevel').textContent = hiLevel;
+  document.getElementById('d-hilines').textContent = hiLines;
+  const spd = running ? SPEEDS[Math.min((level||1) - 1, SPEEDS.length - 1)] : '—';
+  document.getElementById('d-speed').textContent  = running ? spd + 'ms' : '—';
+  document.getElementById('d-plays').textContent  = playCount;
+  const stateEl = document.getElementById('d-state');
+  stateEl.textContent = state || (paused ? 'PAUSED' : running ? 'PLAYING' : 'IDLE');
+  stateEl.className = 'debug-val warn';
+}
+
+
+function drawCell(x, y, color, alpha) {
+  const px = x * CELL, py = y * CELL;
+  ctx.save();
+  ctx.globalAlpha = (alpha !== undefined) ? alpha : 1;
+  ctx.fillStyle = color;
+  ctx.fillRect(px + 1, py + 1, CELL - 2, CELL - 2);
+  const g = ctx.createLinearGradient(px, py, px, py + CELL);
+  g.addColorStop(0, 'rgba(255,255,255,0.18)');
+  g.addColorStop(1, 'rgba(0,0,0,0.25)');
+  ctx.fillStyle = g;
+  ctx.fillRect(px + 1, py + 1, CELL - 2, CELL - 2);
+  ctx.restore();
+}
+
+function render() {
+  ctx.fillStyle = '#0a0a0f';
+  ctx.fillRect(0, 0, canvas.width, canvas.height);
+
+  ctx.strokeStyle = '#12122a';
+  ctx.lineWidth = 0.5;
+  for (let c = 0; c <= COLS; c++) {
+    ctx.beginPath(); ctx.moveTo(c * CELL, 0); ctx.lineTo(c * CELL, canvas.height); ctx.stroke();
+  }
+  for (let r = 0; r <= ROWS; r++) {
+    ctx.beginPath(); ctx.moveTo(0, r * CELL); ctx.lineTo(canvas.width, r * CELL); ctx.stroke();
+  }
+
+  board.forEach((row, r) => {
+    row.forEach((color, c) => {
+      if (!color) return;
+      if (flashRows.includes(r)) {
+        const a = Math.abs(Math.sin((flashAcc / FLASH_MS) * Math.PI * 3));
+        drawCell(c, r, '#ffffff', a);
+      } else {
+        drawCell(c, r, color);
+      }
+    });
+  });
+
+  if (piece) {
+    const gy = dropGhost();
+    if (gy !== piece.y) {
+      piece.shape.forEach((row, r) => row.forEach((v, c) => {
+        if (v) drawCell(piece.x + c, gy + r, piece.color, 0.18);
+      }));
+    }
+    piece.shape.forEach((row, r) => row.forEach((v, c) => {
+      if (v) drawCell(piece.x + c, piece.y + r, piece.color);
+    }));
+  }
+}
+
+// ── Game flow ─────────────────────────────────────────────────────────────
+function spawn() {
+  piece = nextPiece;
+  nextPiece = newPiece();
+  lockAcc = 0;
+  pieceCount++;
+  updateDebug();
+  if (hits(piece, 0, 0)) {
+    endGame();
+  }
+}
+
+function place() {
+  stamp();
+  const rows = fullRows();
+  if (rows.length) {
+    flashRows = rows;
+    flashAcc = 0;
+  } else {
+    piece = null;
+    spawn();
+  }
+}
+
+function endGame() {
+  running = false;
+  cancelAnimationFrame(rafId);
+  if (score > hiScore) hiScore = score;
+  if (level > hiLevel) hiLevel = level;
+  if (lines > hiLines) hiLines = lines;
+  render();
+  updateDebug('GAME OVER');
+  OVR_GAMEOVER.classList.remove('hidden');
+}
+
+function loop(ts) {
+  if (!running) return;
+  const dt = Math.min(ts - lastTs, 100);
+  lastTs = ts;
+
+  // Line-clear flash
+  if (flashRows.length) {
+    flashAcc += dt;
+    render();
+    if (flashAcc >= FLASH_MS) {
+      clearRows(flashRows);
+      const n = flashRows.length;
+      score += ([0, 100, 300, 500, 800][n] || 800) * level;
+      lines += n;
+      level = Math.min(Math.floor(lines / LINES_PER_LEVEL) + 1, MAX_LEVEL);
+      flashRows = [];
+      piece = null;
+      updateDebug();
+      spawn();
+    }
+    rafId = requestAnimationFrame(loop);
+    return;
+  }
+
+  if (!paused && piece) {
+    const spd = SPEEDS[Math.min(level - 1, SPEEDS.length - 1)];
+    if (hits(piece, 0, 1)) {
+      lockAcc += dt;
+      if (lockAcc >= LOCK_MS) {
+        lockAcc = 0;
+        dropAcc = 0;
+        place();
+      }
+    } else {
+      dropAcc += dt;
+      if (dropAcc >= spd) {
+        dropAcc = 0;
+        lockAcc = 0;
+        piece.y++;
+      }
+    }
+  }
+
+  render();
+  rafId = requestAnimationFrame(loop);
+}
+
+function startGame() {
+  board      = newBoard();
+  score      = 0;
+  level      = 1;
+  lines      = 0;
+  running    = false;
+  paused     = false;
+  dropAcc    = 0;
+  lockAcc    = 0;
+  flashRows  = [];
+  flashAcc   = 0;
+  pieceCount = 0;
+  playCount++;
+  nextPiece  = newPiece();
+  piece      = newPiece();
+
+  OVR_START.classList.add('hidden');
+  OVR_PAUSE.classList.add('hidden');
+  OVR_GAMEOVER.classList.add('hidden');
+
+  running = true;
+  lastTs  = performance.now();
+  updateDebug('PLAYING');
+  rafId   = requestAnimationFrame(loop);
+}
+
+function togglePause() {
+  if (!running) return;
+  paused = !paused;
+  if (paused) {
+    OVR_PAUSE.classList.remove('hidden');
+    updateDebug('PAUSED');
+  } else {
+    OVR_PAUSE.classList.add('hidden');
+    lastTs = performance.now();
+    updateDebug('PLAYING');
+    rafId  = requestAnimationFrame(loop);
+  }
+}
+
+// ── Input ──────────────────────────────────────────────────────────────────
+document.addEventListener('keydown', e => {
+  if (e.code === 'KeyP') { togglePause(); return; }
+  if (!running || paused || !piece) return;
+
+  if (e.code === 'ArrowLeft')  { e.preventDefault(); if (!hits(piece,-1,0)) { piece.x--; lockAcc=0; } }
+  if (e.code === 'ArrowRight') { e.preventDefault(); if (!hits(piece, 1,0)) { piece.x++; lockAcc=0; } }
+  if (e.code === 'ArrowDown')  { e.preventDefault(); if (!hits(piece, 0,1)) { piece.y++; score++; dropAcc=0; } }
+  if (e.code === 'ArrowUp') {
+    e.preventDefault();
+    const rot = rotated(piece.shape);
+    for (const k of [0,1,-1,2,-2]) {
+      if (!hits(piece, k, 0, rot)) { piece.shape = rot; piece.x += k; lockAcc = 0; break; }
+    }
+  }
+  if (e.code === 'Space') {
+    e.preventDefault();
+    while (!hits(piece, 0, 1)) { piece.y++; score += 2; }
+    place();
+  }
+});
+
+document.getElementById('btn-start').addEventListener('click', startGame);
+document.getElementById('btn-resume').addEventListener('click', togglePause);
+document.getElementById('btn-replay').addEventListener('click', startGame);
+
+// Initial blank render
+board = newBoard(); flashRows = []; piece = null;
+render();
+updateDebug('IDLE');
+</script>
+</body>
+</html>
