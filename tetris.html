@@ -209,7 +209,7 @@ function stamp() {
 
 function fullRows() {
   let rows = [];
-  for (let r = ROWS - 1; r >= 0; r--)
+  for (let r = 0; r < ROWS; r++)
     if (board[r].every(v => v !== null)) rows.push(r);
   return rows;
 }
@@ -303,8 +303,11 @@ function endGame() {
   cancelAnimationFrame(rafId);
   render();
   OVR_GAMEOVER.classList.remove('hidden');
-  // Report results to parent page (e.g. Qualtrics)
-  window.parent.postMessage({ score, level, lines }, '*');
+  // Report final results to parent page (e.g. Qualtrics)
+  // Use setTimeout to ensure score is fully settled before firing
+  setTimeout(function () {
+    window.parent.postMessage({ score: score, level: level, lines: lines }, '*');
+  }, 50);
 }
 
 function loop(ts) {
@@ -316,8 +319,8 @@ function loop(ts) {
     flashAcc += dt;
     render();
     if (flashAcc >= FLASH_MS) {
-      clearRows(flashRows);
       const n = flashRows.length;
+      clearRows(flashRows);
       score += ([0, 100, 300, 500, 800][n] || 800) * level;
       lines += n;
       level = Math.min(Math.floor(lines / LINES_PER_LEVEL) + 1, MAX_LEVEL);
