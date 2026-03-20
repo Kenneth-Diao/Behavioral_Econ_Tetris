@@ -135,6 +135,7 @@ const MAX_LEVEL = 10;
 const LOCK_MS = 200;
 const FLASH_MS = 200;
 const SPEEDS = [500, 380, 280, 200, 140, 100, 70, 50, 35, 25];
+const SCORE_FOR_LINES = [0, 100, 300, 500, 800];
 
 const PIECE_DEFS = [
   { shape: [[1,1,1,1]],         color: '#00f5ff' },
@@ -161,7 +162,7 @@ let running, paused;
 let rafId, lastTs, dropAcc, lockAcc;
 let flashRows, flashAcc;
 
-// ── Helpers ────────────────────────────────────────────────────────────────
+// ── Board helpers ──────────────────────────────────────────────────────────
 function newBoard() {
   return Array.from({ length: ROWS }, () => Array(COLS).fill(null));
 }
@@ -183,15 +184,16 @@ function rotated(shape) {
   );
 }
 
+// Check if piece p (with optional offset dx,dy and optional override shape sh) collides
 function hits(p, dx, dy, sh) {
-  sh = sh || p.shape;
-  dx = dx || 0;
-  dy = dy || 0;
-  for (let r = 0; r < sh.length; r++) {
-    for (let c = 0; c < sh[r].length; c++) {
-      if (!sh[r][c]) continue;
-      const nx = p.x + c + dx;
-      const ny = p.y + r + dy;
+  var shape = sh !== undefined ? sh : p.shape;
+  var offX  = dx !== undefined ? dx : 0;
+  var offY  = dy !== undefined ? dy : 0;
+  for (var r = 0; r < shape.length; r++) {
+    for (var c = 0; c < shape[r].length; c++) {
+      if (!shape[r][c]) continue;
+      var nx = p.x + c + offX;
+      var ny = p.y + r + offY;
       if (nx < 0 || nx >= COLS || ny >= ROWS) return true;
       if (ny >= 0 && board[ny][nx]) return true;
     }
@@ -199,40 +201,58 @@ function hits(p, dx, dy, sh) {
   return false;
 }
 
+// Write piece onto board
 function stamp() {
-  piece.shape.forEach((row, r) => {
-    row.forEach((v, c) => {
-      if (v && piece.y + r >= 0) board[piece.y + r][piece.x + c] = piece.color;
+  piece.shape.forEach(function(row, r) {
+    row.forEach(function(v, c) {
+      if (v && piece.y + r >= 0) {
+        board[piece.y + r][piece.x + c] = piece.color;
+      }
     });
   });
 }
 
-function fullRows() {
-  let rows = [];
-  for (let r = 0; r < ROWS; r++)
-    if (board[r].every(v => v !== null)) rows.push(r);
+// Return indices of completely filled rows (top-to-bottom order)
+function getFullRows() {
+  var rows = [];
+  for (var r = 0; r < ROWS; r++) {
+    if (board[r].every(function(v) { return v !== null; })) {
+      rows.push(r);
+    }
+  }
   return rows;
 }
 
-function clearRows(rows) {
-  rows.sort((a, b) => b - a);
-  rows.forEach(r => { board.splice(r, 1); board.unshift(Array(COLS).fill(null)); });
+// Remove all filled rows in one clean pass and add empty rows at top
+// FIX: filter out all full rows at once, then prepend empty rows —
+// avoids index-drift that happened when splicing one row at a time.
+function clearRows(rowIndices) {
+  // Build a set for fast lookup
+  var toRemove = {};
+  rowIndices.forEach(function(r) { toRemove[r] = true; });
+  // Keep only rows that are NOT in the removal set
+  var kept = board.filter(function(_, r) { return !toRemove[r]; });
+  // Prepend empty rows to restore board height
+  var empty = Array.from({ length: rowIndices.length }, function() {
+    return Array(COLS).fill(null);
+  });
+  board = empty.concat(kept);
 }
 
-function dropGhost() {
-  let dy = 0;
+function ghostY() {
+  var dy = 0;
   while (!hits(piece, 0, dy + 1)) dy++;
   return piece.y + dy;
 }
 
 // ── Render ─────────────────────────────────────────────────────────────────
 function drawCell(x, y, color, alpha) {
-  const px = x * CELL, py = y * CELL;
+  var px = x * CELL, py = y * CELL;
   ctx.save();
   ctx.globalAlpha = (alpha !== undefined) ? alpha : 1;
   ctx.fillStyle = color;
   ctx.fillRect(px + 1, py + 1, CELL - 2, CELL - 2);
-  const g = ctx.createLinearGradient(px, py, px, py + CELL);
+  var g = ctx.createLinearGradient(px, py, px, py + CELL);
   g.addColorStop(0, 'rgba(255,255,255,0.18)');
   g.addColorStop(1, 'rgba(0,0,0,0.25)');
   ctx.fillStyle = g;
@@ -246,18 +266,18 @@ function render() {
 
   ctx.strokeStyle = '#12122a';
   ctx.lineWidth = 0.5;
-  for (let c = 0; c <= COLS; c++) {
+  for (var c = 0; c <= COLS; c++) {
     ctx.beginPath(); ctx.moveTo(c * CELL, 0); ctx.lineTo(c * CELL, canvas.height); ctx.stroke();
   }
-  for (let r = 0; r <= ROWS; r++) {
+  for (var r = 0; r <= ROWS; r++) {
     ctx.beginPath(); ctx.moveTo(0, r * CELL); ctx.lineTo(canvas.width, r * CELL); ctx.stroke();
   }
 
-  board.forEach((row, r) => {
-    row.forEach((color, c) => {
+  board.forEach(function(row, r) {
+    row.forEach(function(color, c) {
       if (!color) return;
-      if (flashRows.includes(r)) {
-        const a = Math.abs(Math.sin((flashAcc / FLASH_MS) * Math.PI * 3));
+      if (flashRows.indexOf(r) !== -1) {
+        var a = Math.abs(Math.sin((flashAcc / FLASH_MS) * Math.PI * 3));
         drawCell(c, r, '#ffffff', a);
       } else {
         drawCell(c, r, color);
@@ -266,15 +286,19 @@ function render() {
   });
 
   if (piece) {
-    const gy = dropGhost();
+    var gy = ghostY();
     if (gy !== piece.y) {
-      piece.shape.forEach((row, r) => row.forEach((v, c) => {
-        if (v) drawCell(piece.x + c, gy + r, piece.color, 0.18);
-      }));
+      piece.shape.forEach(function(row, r) {
+        row.forEach(function(v, c) {
+          if (v) drawCell(piece.x + c, gy + r, piece.color, 0.18);
+        });
+      });
     }
-    piece.shape.forEach((row, r) => row.forEach((v, c) => {
-      if (v) drawCell(piece.x + c, piece.y + r, piece.color);
-    }));
+    piece.shape.forEach(function(row, r) {
+      row.forEach(function(v, c) {
+        if (v) drawCell(piece.x + c, piece.y + r, piece.color);
+      });
+    });
   }
 }
 
@@ -283,15 +307,17 @@ function spawn() {
   piece = nextPiece;
   nextPiece = newPiece();
   lockAcc = 0;
-  if (hits(piece, 0, 0)) endGame();
+  if (hits(piece, 0, 0)) {
+    endGame();
+  }
 }
 
 function place() {
   stamp();
-  const rows = fullRows();
-  if (rows.length) {
+  var rows = getFullRows();
+  if (rows.length > 0) {
     flashRows = rows;
-    flashAcc = 0;
+    flashAcc  = 0;
   } else {
     piece = null;
     spawn();
@@ -303,27 +329,34 @@ function endGame() {
   cancelAnimationFrame(rafId);
   render();
   OVR_GAMEOVER.classList.remove('hidden');
-  // Report final results to parent page (e.g. Qualtrics)
-  // Use setTimeout to ensure score is fully settled before firing
-  setTimeout(function () {
-    window.parent.postMessage({ score: score, level: level, lines: lines }, '*');
-  }, 50);
+  // Post final results to Qualtrics (or any parent frame).
+  // Captured in local vars so they can't change after this point.
+  var finalScore = score;
+  var finalLevel = level;
+  var finalLines = lines;
+  window.parent.postMessage(
+    { tetris_score: finalScore, tetris_level: finalLevel, tetris_lines: finalLines },
+    '*'
+  );
 }
 
 function loop(ts) {
   if (!running) return;
-  const dt = Math.min(ts - lastTs, 100);
+  var dt = Math.min(ts - lastTs, 100);
   lastTs = ts;
 
-  if (flashRows.length) {
+  // ── Line-clear flash phase ──
+  if (flashRows.length > 0) {
     flashAcc += dt;
     render();
     if (flashAcc >= FLASH_MS) {
-      const n = flashRows.length;
-      clearRows(flashRows);
-      score += ([0, 100, 300, 500, 800][n] || 800) * level;
+      // Score and update level BEFORE clearing so n is still correct
+      var n = flashRows.length;
+      score += (SCORE_FOR_LINES[n] || 800) * level;
       lines += n;
-      level = Math.min(Math.floor(lines / LINES_PER_LEVEL) + 1, MAX_LEVEL);
+      level  = Math.min(Math.floor(lines / LINES_PER_LEVEL) + 1, MAX_LEVEL);
+      // Clear all flagged rows in one pass (fixes the bottom-row bug)
+      clearRows(flashRows);
       flashRows = [];
       piece = null;
       spawn();
@@ -332,8 +365,9 @@ function loop(ts) {
     return;
   }
 
+  // ── Normal drop phase ──
   if (!paused && piece) {
-    const spd = SPEEDS[Math.min(level - 1, SPEEDS.length - 1)];
+    var spd = SPEEDS[Math.min(level - 1, SPEEDS.length - 1)];
     if (hits(piece, 0, 1)) {
       lockAcc += dt;
       if (lockAcc >= LOCK_MS) {
@@ -355,6 +389,7 @@ function loop(ts) {
   rafId = requestAnimationFrame(loop);
 }
 
+// ── Init ───────────────────────────────────────────────────────────────────
 function startGame() {
   board     = newBoard();
   score     = 0;
@@ -391,18 +426,33 @@ function togglePause() {
 }
 
 // ── Input ──────────────────────────────────────────────────────────────────
-document.addEventListener('keydown', e => {
+document.addEventListener('keydown', function(e) {
   if (e.code === 'KeyP') { togglePause(); return; }
   if (!running || paused || !piece) return;
 
-  if (e.code === 'ArrowLeft')  { e.preventDefault(); if (!hits(piece,-1,0)) { piece.x--; lockAcc=0; } }
-  if (e.code === 'ArrowRight') { e.preventDefault(); if (!hits(piece, 1,0)) { piece.x++; lockAcc=0; } }
-  if (e.code === 'ArrowDown')  { e.preventDefault(); if (!hits(piece, 0,1)) { piece.y++; score++; dropAcc=0; } }
+  if (e.code === 'ArrowLeft') {
+    e.preventDefault();
+    if (!hits(piece, -1, 0)) { piece.x--; lockAcc = 0; }
+  }
+  if (e.code === 'ArrowRight') {
+    e.preventDefault();
+    if (!hits(piece, 1, 0)) { piece.x++; lockAcc = 0; }
+  }
+  if (e.code === 'ArrowDown') {
+    e.preventDefault();
+    if (!hits(piece, 0, 1)) { piece.y++; score++; dropAcc = 0; }
+  }
   if (e.code === 'ArrowUp') {
     e.preventDefault();
-    const rot = rotated(piece.shape);
-    for (const k of [0,1,-1,2,-2]) {
-      if (!hits(piece, k, 0, rot)) { piece.shape = rot; piece.x += k; lockAcc = 0; break; }
+    var rot = rotated(piece.shape);
+    var kicks = [0, 1, -1, 2, -2];
+    for (var i = 0; i < kicks.length; i++) {
+      if (!hits(piece, kicks[i], 0, rot)) {
+        piece.shape = rot;
+        piece.x += kicks[i];
+        lockAcc = 0;
+        break;
+      }
     }
   }
   if (e.code === 'Space') {
