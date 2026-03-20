@@ -1,0 +1,393 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Tetris — Research Game</title>
+<style>
+  @import url('https://fonts.googleapis.com/css2?family=Share+Tech+Mono&family=Orbitron:wght@400;700;900&display=swap');
+
+  :root {
+    --bg: #0a0a0f;
+    --panel: #0f0f1a;
+    --border: #1e1e3a;
+    --accent: #00f5ff;
+    --accent2: #ff006e;
+    --accent3: #ffbe0b;
+    --text: #e0e0ff;
+    --dim: #4a4a7a;
+  }
+
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+
+  html, body {
+    height: 100%;
+    background: var(--bg);
+    color: var(--text);
+    font-family: 'Share Tech Mono', monospace;
+    overflow-x: hidden;
+  }
+
+  /* Animated grid background */
+  body::before {
+    content: '';
+    position: fixed;
+    inset: 0;
+    background-image:
+      linear-gradient(var(--border) 1px, transparent 1px),
+      linear-gradient(90deg, var(--border) 1px, transparent 1px);
+    background-size: 40px 40px;
+    opacity: 0.4;
+    pointer-events: none;
+    animation: gridShift 20s linear infinite;
+  }
+
+  @keyframes gridShift {
+    from { background-position: 0 0; }
+    to   { background-position: 40px 40px; }
+  }
+
+  body::after {
+    content: '';
+    position: fixed;
+    inset: 0;
+    background:
+      radial-gradient(ellipse 70% 50% at 50% 50%, rgba(0,245,255,0.05) 0%, transparent 70%);
+    pointer-events: none;
+  }
+
+  /* Layout */
+  .page {
+    position: relative;
+    z-index: 1;
+    min-height: 100vh;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    padding: 60px 24px;
+    gap: 48px;
+  }
+
+  /* Hero */
+  .hero {
+    text-align: center;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 20px;
+  }
+
+  .hero-eyebrow {
+    font-size: 10px;
+    letter-spacing: 4px;
+    color: var(--dim);
+    text-transform: uppercase;
+    animation: fadeUp 0.6s ease both;
+  }
+
+  .hero-title {
+    font-family: 'Orbitron', sans-serif;
+    font-size: clamp(56px, 12vw, 96px);
+    font-weight: 900;
+    letter-spacing: 8px;
+    line-height: 1;
+    color: var(--accent);
+    text-shadow:
+      0 0 30px rgba(0,245,255,0.6),
+      0 0 80px rgba(0,245,255,0.2);
+    animation: fadeUp 0.6s ease 0.1s both;
+  }
+
+  .hero-sub {
+    font-size: 12px;
+    letter-spacing: 2px;
+    color: var(--dim);
+    max-width: 400px;
+    line-height: 2;
+    animation: fadeUp 0.6s ease 0.2s both;
+  }
+
+  /* Cards */
+  .cards {
+    display: flex;
+    gap: 20px;
+    flex-wrap: wrap;
+    justify-content: center;
+    animation: fadeUp 0.6s ease 0.3s both;
+  }
+
+  .card {
+    background: var(--panel);
+    border: 1px solid var(--border);
+    border-radius: 4px;
+    padding: 28px 32px;
+    width: 220px;
+    display: flex;
+    flex-direction: column;
+    gap: 12px;
+    position: relative;
+    overflow: hidden;
+    transition: border-color 0.2s, transform 0.2s;
+  }
+
+  .card::before {
+    content: '';
+    position: absolute;
+    top: 0; left: 0; right: 0;
+    height: 2px;
+    background: linear-gradient(90deg, transparent, var(--card-accent, var(--accent)), transparent);
+    opacity: 0.7;
+  }
+
+  .card:hover {
+    border-color: var(--card-accent, var(--accent));
+    transform: translateY(-3px);
+  }
+
+  .card.game  { --card-accent: var(--accent); }
+  .card.debug { --card-accent: var(--accent3); }
+
+  .card-icon {
+    font-size: 28px;
+    line-height: 1;
+  }
+
+  .card-label {
+    font-family: 'Orbitron', sans-serif;
+    font-size: 9px;
+    letter-spacing: 3px;
+    color: var(--dim);
+    text-transform: uppercase;
+  }
+
+  .card-title {
+    font-family: 'Orbitron', sans-serif;
+    font-size: 15px;
+    font-weight: 700;
+    color: var(--card-accent, var(--accent));
+    text-shadow: 0 0 10px rgba(0,245,255,0.3);
+  }
+
+  .card.debug .card-title {
+    text-shadow: 0 0 10px rgba(255,190,11,0.3);
+  }
+
+  .card-desc {
+    font-size: 10px;
+    color: var(--dim);
+    line-height: 1.8;
+    letter-spacing: 0.5px;
+  }
+
+  .card-btn {
+    display: inline-block;
+    margin-top: 8px;
+    padding: 8px 16px;
+    border: 1px solid var(--card-accent, var(--accent));
+    color: var(--card-accent, var(--accent));
+    font-family: 'Orbitron', sans-serif;
+    font-size: 9px;
+    letter-spacing: 2px;
+    text-decoration: none;
+    text-transform: uppercase;
+    text-align: center;
+    transition: background 0.15s, color 0.15s;
+  }
+
+  .card-btn:hover {
+    background: var(--card-accent, var(--accent));
+    color: var(--bg);
+  }
+
+  /* Controls reference */
+  .controls-box {
+    background: var(--panel);
+    border: 1px solid var(--border);
+    border-radius: 4px;
+    padding: 24px 32px;
+    display: flex;
+    gap: 40px;
+    flex-wrap: wrap;
+    justify-content: center;
+    animation: fadeUp 0.6s ease 0.4s both;
+    position: relative;
+  }
+
+  .controls-box::before {
+    content: 'CONTROLS';
+    position: absolute;
+    top: -8px;
+    left: 50%;
+    transform: translateX(-50%);
+    font-family: 'Orbitron', sans-serif;
+    font-size: 8px;
+    letter-spacing: 3px;
+    color: var(--dim);
+    background: var(--panel);
+    padding: 0 10px;
+  }
+
+  .control-item {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+  }
+
+  .key {
+    background: var(--bg);
+    border: 1px solid var(--border);
+    border-bottom: 2px solid var(--border);
+    border-radius: 3px;
+    padding: 4px 8px;
+    font-size: 10px;
+    color: var(--text);
+    white-space: nowrap;
+    min-width: 36px;
+    text-align: center;
+  }
+
+  .key-label {
+    font-size: 10px;
+    color: var(--dim);
+    letter-spacing: 1px;
+  }
+
+  /* Footer */
+  .footer {
+    font-size: 9px;
+    letter-spacing: 2px;
+    color: var(--dim);
+    text-align: center;
+    animation: fadeUp 0.6s ease 0.5s both;
+  }
+
+  .footer a {
+    color: var(--accent);
+    text-decoration: none;
+    opacity: 0.6;
+    transition: opacity 0.15s;
+  }
+  .footer a:hover { opacity: 1; }
+
+  /* Falling pieces decoration */
+  .pieces-bg {
+    position: fixed;
+    inset: 0;
+    pointer-events: none;
+    overflow: hidden;
+    z-index: 0;
+  }
+
+  .falling-piece {
+    position: absolute;
+    top: -60px;
+    opacity: 0.06;
+    animation: fall linear infinite;
+  }
+
+  @keyframes fall {
+    to { transform: translateY(110vh) rotate(360deg); }
+  }
+
+  @keyframes fadeUp {
+    from { opacity: 0; transform: translateY(16px); }
+    to   { opacity: 1; transform: translateY(0); }
+  }
+</style>
+</head>
+<body>
+
+<!-- Falling pieces background decoration -->
+<div class="pieces-bg" id="pieces-bg"></div>
+
+<div class="page">
+
+  <div class="hero">
+    <div class="hero-eyebrow">Research Study Game</div>
+    <div class="hero-title">TETRIS</div>
+    <div class="hero-sub">
+      A browser-based Tetris game built for use in research surveys.
+      Clear lines, advance levels, and see how far you can go.
+    </div>
+  </div>
+
+  <div class="cards">
+    <div class="card game">
+      <div class="card-icon">🎮</div>
+      <div class="card-label">Survey Version</div>
+      <div class="card-title">Play Game</div>
+      <div class="card-desc">
+        The study version. No score display — intended to be embedded in a Qualtrics survey.
+      </div>
+      <a class="card-btn" href="tetris.html">Launch →</a>
+    </div>
+
+
+    <div class="card debug" style="display:none;">
+      <div class="card-icon">⚙️</div>
+      <div class="card-label">Debug Version</div>
+      <div class="card-title">Debug Mode</div>
+      <div class="card-desc">
+        Shows live stats, high scores, play count, and includes a replay button. For testing only.
+      </div>
+      <a class="card-btn" href="tetris-debug.html">Launch →</a>
+    </div>
+  </div>
+
+  <div class="controls-box">
+    <div class="control-item">
+      <span class="key">← →</span>
+      <span class="key-label">Move</span>
+    </div>
+    <div class="control-item">
+      <span class="key">↑</span>
+      <span class="key-label">Rotate</span>
+    </div>
+    <div class="control-item">
+      <span class="key">↓</span>
+      <span class="key-label">Soft drop</span>
+    </div>
+    <div class="control-item">
+      <span class="key">SPACE</span>
+      <span class="key-label">Hard drop</span>
+    </div>
+    <div class="control-item">
+      <span class="key">P</span>
+      <span class="key-label">Pause</span>
+    </div>
+  </div>
+
+  <div class="footer">
+    Hosted on GitHub Pages &nbsp;·&nbsp;
+    Built for research use
+  </div>
+
+</div>
+
+<script>
+  // Generate falling tetromino pieces in the background
+  const container = document.getElementById('pieces-bg');
+  const shapes = ['■■■■', '■■\n■■', '■■■\n ■ ', ' ■■\n■■ ', '■■ \n ■■', '■  \n■■■', '  ■\n■■■'];
+  const colors = ['#00f5ff','#ffbe0b','#bf5af2','#30d158','#ff453a','#0a84ff','#ff9f0a'];
+
+  for (let i = 0; i < 12; i++) {
+    const el = document.createElement('div');
+    el.className = 'falling-piece';
+    const idx = Math.floor(Math.random() * shapes.length);
+    el.style.cssText = `
+      left: ${Math.random() * 100}%;
+      font-size: ${16 + Math.random() * 24}px;
+      color: ${colors[idx]};
+      animation-duration: ${8 + Math.random() * 14}s;
+      animation-delay: ${-Math.random() * 20}s;
+      font-family: monospace;
+      line-height: 1;
+      white-space: pre;
+    `;
+    el.textContent = shapes[idx];
+    container.appendChild(el);
+  }
+</script>
+</body>
+</html>
