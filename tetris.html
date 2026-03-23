@@ -328,16 +328,28 @@ function endGame() {
   running = false;
   cancelAnimationFrame(rafId);
   render();
-  OVR_GAMEOVER.classList.remove('hidden');
-  // Post final results to Qualtrics (or any parent frame).
-  // Captured in local vars so they can't change after this point.
+
   var finalScore = score;
   var finalLevel = level;
   var finalLines = lines;
-  window.parent.postMessage(
-    { tetris_score: finalScore, tetris_level: finalLevel, tetris_lines: finalLines },
-    '*'
-  );
+
+  // Show score on game over screen
+  var sub = document.querySelector('#overlay-gameover .overlay-sub');
+  sub.innerHTML = 'Thanks for playing!<br><br>'
+    + 'Score: ' + finalScore + '<br>'
+    + 'Level: ' + finalLevel + '<br>'
+    + 'Lines: ' + finalLines;
+
+  OVR_GAMEOVER.classList.remove('hidden');
+
+  var payload = { tetris_score: finalScore, tetris_level: finalLevel, tetris_lines: finalLines };
+
+  // Try opener first (popup approach), then fall back to parent (iframe approach)
+  if (window.opener && !window.opener.closed) {
+    window.opener.postMessage(payload, '*');
+  } else {
+    window.parent.postMessage(payload, '*');
+  }
 }
 
 function loop(ts) {
